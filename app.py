@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 
-st.title("Datetime Fix + Duration Calculator")
+st.title("Excel Datetime Fix Tool")
 
 uploaded_file = st.file_uploader(
     "Upload Excel file",
@@ -9,29 +10,37 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
+    df = pd.read_excel(uploaded_file, dtype=str)
 
     st.subheader("Original data")
     st.dataframe(df)
 
     # ===============================
-    # 1. Force datetime conversion
+    # 1. Detect date/time columns
     # ===============================
     date_cols = [
         c for c in df.columns
-        if "date" in c.lower() or "time" in c.lower()
+        if any(k in c.lower() for k in ["date", "time", "created", "completed"])
     ]
 
+    # ===============================
+    # 2. Force ISO + text → datetime
+    # ===============================
     for col in date_cols:
-        df[col] = pd.to_datetime(df[col], errors="coerce")
+        df[col] = (
+            df[col]
+            .str.replace("T", " ", regex=False)
+            .str.replace("Z", "", regex=False)
+            .pipe(pd.to_datetime, errors="coerce")
+        )
 
-    st.success(f"Converted to datetime: {date_cols}")
+    st.success(f"Fixed datetime columns: {date_cols}")
 
     # ===============================
-    # 2. Example difference (edit these)
+    # 3. Example duration
     # ===============================
     START_COL = "Created"
-    END_COL = "Sample_Completed_Date"
+    END_COL = "Pattern_Complete_Date"
 
     if START_COL in df.columns and END_COL in df.columns:
         df["Duration_hours"] = (
@@ -40,27 +49,23 @@ if uploaded_file:
             / 3600
         )
 
-        df["Duration_hh_mm"] = (
-            pd.to_timedelta(df["Duration_hours"], unit="h")
-            .astype(str)
-            .str.split(" ").str[-1]
-        )
+    # ===============================
+    # 4. Export (Excel-safe)
+    # ===============================
+    buffer = BytesIO()
+    df.to_excel(
+        buffer,
+        index=False,
+        engine="openpyxl",
+        datetime_format="yyyy-mm-dd hh:mm"
+    )
+    buffer.seek(0)
 
-    # ===============================
-    # 3. Show result
-    # ===============================
     st.subheader("Fixed data")
     st.dataframe(df)
 
-    # ===============================
-    # 4. Download
-    # ===============================
-    output_file = "fixed_datetime_output.xlsx"
-    df.to_excel(output_file, index=False)
-
-    with open(output_file, "rb") as f:
-        st.download_button(
-            "Download fixed Excel",
-            f,
-            file_name=output_file
-        )
+    st.download_button(
+        "Download fixed Excel",
+        buffer,
+        file_name="fixed_datetime_output.xlsx"
+    )
