@@ -1,71 +1,33 @@
-import streamlit as st
-import pandas as pd
 from io import BytesIO
+from openpyxl import load_workbook
 
-st.title("Excel Datetime Fix Tool")
+buffer = BytesIO()
 
-uploaded_file = st.file_uploader(
-    "Upload Excel file",
-    type=["xlsx"]
+df.to_excel(
+    buffer,
+    index=False,
+    engine="openpyxl"
 )
 
-if uploaded_file:
-    df = pd.read_excel(uploaded_file, dtype=str)
+buffer.seek(0)
 
-    st.subheader("Original data")
-    st.dataframe(df)
+# Force Excel datetime format (date + time)
+wb = load_workbook(buffer)
+ws = wb.active
 
-    # ===============================
-    # 1. Detect date/time columns
-    # ===============================
-    date_cols = [
-        c for c in df.columns
-        if any(k in c.lower() for k in ["date", "time", "created", "completed"])
-    ]
+for col in ws.columns:
+    header = col[0].value
+    if header and any(k in header.lower() for k in ["date", "time", "created", "completed"]):
+        for cell in col[1:]:
+            if cell.value:
+                cell.number_format = "yyyy-mm-dd hh:mm"
 
-    # ===============================
-    # 2. Force ISO + text → datetime
-    # ===============================
-    for col in date_cols:
-        df[col] = (
-            df[col]
-            .str.replace("T", " ", regex=False)
-            .str.replace("Z", "", regex=False)
-            .pipe(pd.to_datetime, errors="coerce")
-        )
+buffer = BytesIO()
+wb.save(buffer)
+buffer.seek(0)
 
-    st.success(f"Fixed datetime columns: {date_cols}")
-
-    # ===============================
-    # 3. Example duration
-    # ===============================
-    START_COL = "Created"
-    END_COL = "Pattern_Complete_Date"
-
-    if START_COL in df.columns and END_COL in df.columns:
-        df["Duration_hours"] = (
-            (df[END_COL] - df[START_COL])
-            .dt.total_seconds()
-            / 3600
-        )
-
-    # ===============================
-    # 4. Export (Excel-safe)
-    # ===============================
-    buffer = BytesIO()
-    df.to_excel(
-        buffer,
-        index=False,
-        engine="openpyxl",
-        datetime_format="yyyy-mm-dd hh:mm"
-    )
-    buffer.seek(0)
-
-    st.subheader("Fixed data")
-    st.dataframe(df)
-
-    st.download_button(
-        "Download fixed Excel",
-        buffer,
-        file_name="fixed_datetime_output.xlsx"
-    )
+st.download_button(
+    "Download fixed Excel",
+    buffer,
+    file_name="fixed_datetime_output.xlsx"
+)
