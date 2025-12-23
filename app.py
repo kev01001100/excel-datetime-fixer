@@ -28,17 +28,19 @@ if uploaded_file:
     # 3) Force everything in those columns to real datetime
     for col in date_cols:
         s = df[col].astype(str)
-        s = s.replace({
-            "NaT": None,
-            "nan": None,
-            "None": None,
-            "(blank)": None,
-            ""
-        })
-        s = s.str.replace("T", " ", regex=False)\
-             .str.replace("Z", "", regex=False)
+
+        s = s.replace(
+            ["NaT", "nan", "None", "(blank)", ""],
+            None
+        )
+
+        s = (
+            s.str.replace("T", " ", regex=False)
+            .str.replace("Z", "", regex=False)
+        )
 
         df[col] = pd.to_datetime(s, errors="coerce")
+
 
     st.success(f"Converted to datetime: {date_cols}")
 
